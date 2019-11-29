@@ -1,0 +1,67 @@
+---
+title: "Exploring technical interactions"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br> 
+<br> 
+  
+
+Potential relationship between two métiers targeting one species in a mixed fishery : 
+
+\begin{equation}
+E_{2,y} = \frac{c}{q_{1,2}B_{1,y}} - \frac{q_{1,1}}{q_{1,2}}E_{1,y} 
+\end{equation}
+
+Simplified Cobb-Douglas production function :
+
+\begin{equation} 
+C_{1,2,y} = q_{1,2}E_{2,y}B_{1,y}  
+\end{equation}
+
+Biomass can be expressed as :
+
+\begin{equation}
+ B_{1,y} = \frac{C_{1,2,y}}{q_{1,2}E_{2,y}} 
+\end{equation}
+
+We change the biomass term in the Eq 1 :
+\begin{equation}
+ E_{2,y} = \frac{c}{q_{1,2}\frac{ C_{1,2,y}}{q_{1,2}E_{2,y}}} - \frac{q_{1,1}}{q_{1,2}}E_{1,y} 
+\end{equation}
+
+\begin{equation}
+ E_{2,y} = \frac {c\space{}q_{1,2}E_{2,y}} {q_{1,2}C_{1,2,y}} - \frac{q_{1,1}}{q_{1,2}}E_{1,y} 
+\end{equation}
+
+\begin{equation}
+ E_{2,y} = \frac {c\space{}E_{2,y}} {C_{1,2,y}} - \frac{q_{1,1}}{q_{1,2}}E_{1,y} 
+\end{equation}
+
+\begin{equation}
+ \frac{q_{1,1}}{q_{1,2}}E_{1,y} = \frac {c\space{}E_{2,y}} {C_{1,2,y}} - E_{2,y} 
+\end{equation}
+
+\begin{equation}
+ \frac{q_{1,1}}{q_{1,2}}E_{1,y} = \frac {c\space{}E_{2,y} - E_{2,y}C_{1,2,y}} {C_{1,2,y}}  
+\end{equation}
+
+\begin{equation}
+ E_{1,y} = \frac{q_{1,2}}{q_{1,1}} \frac {c\space{}E_{2,y} - E_{2,y}C_{1,2,y}} {C_{1,2,y}}  
+\end{equation}
+
+\begin{equation}
+ E_{1,y} =  \frac {E_{2,y}(c -C_{1,2,y})} {C_{1,2,y}}\frac{q_{1,2}}{q_{1,1}} 
+\end{equation}
+
+c is the total catch of species 1 : $$c = C_{1,1,y} + C_{1,2,y}$$
+
+\begin{equation}
+ E_{1,y} =  E_{2,y} \frac {C_{1,1,y}} {C_{1,2,y}}\frac{q_{1,2}}{q_{1,1}} 
+\end{equation}

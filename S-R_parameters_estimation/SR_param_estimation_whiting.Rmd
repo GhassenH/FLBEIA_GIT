@@ -1,0 +1,125 @@
+---
+title: "SR parameters estimation for whiting (by using a prior) "
+output:
+  html_document: default
+  pdf_document: default
+---
+
+<br>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message = F, warning = F)
+library(icesSAG) 
+library(kableExtra)
+```
+
+## Estimating reproductive rate
+
+### The Ricker model
+$$ R_t = \alpha.S_t.e^{-\beta.S_t}  $$ 
+
+* $R_t$ : The number of recruits belonging to year class $t$
+* $\alpha$ : The slope at the origin
+* $S_t$ : The weight of spawners at time $t$ 
+
+$$ \hat{\alpha} = \alpha.SPR_{F=0} $$
+
+* $\hat{\alpha}$ : Number of spawners produced by each spawners over its lifetime at low spawner abundance 
+* $SPR_{F=0}$ : Spawing biomass resulting from each rectruit
+
+$$ \tilde{\alpha} = \alpha.SPR_{F=0}.(1-P_s) $$
+
+* $\tilde{\alpha}$ : Maximum annual reproductive rate 
+* $P_s$ : The proportion surviving each year in the absence of fishing. $(P_s = e^{-M})$
+
+### The Beverton and Holt model
+#### Equation 1 : 
+
+$$ R = \frac{a.ssb}{b+ssb} $$  
+
+* $a$ : The maximum number of recruits produced
+* $b$ : The spawning stock needed to produce (on average) recruitment equal to $\frac{a}{2}$  
+  
+<br>
+
+#### Equation : 2
+
+$$ R = \frac{a^\prime}{1+(\frac{a^\prime}{b^{\prime\prime}})S} $$
+
+
+*  $a^\prime$ : The maximum of $\frac{R}{S}$ at low stock size 
+*  $b^{\prime\prime}$ : The maximum number of recruits when S is very large 
+
+## Estimation of the prior
+#### Method 1
+
+$\alpha$ can be expressed as :  
+$$ \alpha = \frac{\tilde{\alpha}}{SPR_{F=0}.(1-e^{-M})} $$
+
+* Uncertainities around $SPR_{F=0}$ and $M$
+  
+<br>
+
+#### Method 2
+
+$$ z = \frac{\hat{\alpha}}{4 + \hat{\alpha}} $$
+
+* $z$ : steepness parameter  
+
+$$ \hat{\alpha} = \frac{4z}{1-z}  $$
+$\alpha$ can be expressed as :  
+
+$$ \alpha = \frac{\hat{\alpha}}{SPR_{F=0}}$$
+
+## Dowloading data
+```{r download_data}
+WHG_data <- getSAG(stock = "whg.27.7b-ce-k", year = 2017, data = "summary")
+ssb <- WHG_data$SSB
+rec <- WHG_data$recruitment
+```
+
+## Calculation of the prior (alpha parameter)
+```{r prior}
+## ssb and rec for 2017 (the last year)
+ssb.whg.2017 <- ssb[length(ssb)]
+rec.whg.2017 <- rec[length(rec)]
+
+# spawing biomass resulting from each recruit
+SPR <- ssb.whg.2017 / (rec.whg.2017) 
+z <- 0.81 # from (Meyers, 1999)
+alpha.hat <- 4*z/(1-z)
+alpha.prior <- alpha.hat / SPR
+```
+
+## Likelihood function
+```{r LL_function}
+LL <- function(par){
+  a <- exp(par[1])
+  b <- exp(par[2])
+  c <- exp(par[3])
+  # R <- a*ssb / (b+ssb) # Beverton and Holt 1
+  # R <- a*ssb*exp(-b*ssb) # Ricker
+  R <- a*ssb /(1 + ((a/b) * ssb)) # Beverton and Holt 2
+
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  lp <- ll + dnorm(log(a), log(alpha.prior), 0.1) 
+  -sum(lp)
+}
+
+# LL_opt <- nlminb(start = log(c(25e5, 70000, .5)),  objective = LL)
+LL_opt <- nlminb(start = log(c(25e1, 8e5, .5)),  objective = LL)
+LL_opt
+
+```
+
+```{r plot_1, echo = F}
+a <- exp(LL_opt$par[1])
+b <- exp(LL_opt$par[2])
+data <- data.frame(paramter_a = a, paramter_b = b)
+# sr1 <- function(x){a*x / (b+x)} # Beverton and Holt 1
+sr1 <- function(x){a*x /(1 + ((a/b) * x))} # Beverton and Holt 2
+s <- seq(0, 10e5, by = 1000)
+plot(ssb, rec, bty = "l",  xlim = c(0, 1e5), ylim = c(0, 3e6),
+     xlab = "ssb", ylab = "rec")
+lines(s, sr1(s))
+```

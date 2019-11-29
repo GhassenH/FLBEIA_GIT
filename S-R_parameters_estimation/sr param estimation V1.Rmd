@@ -1,0 +1,135 @@
+---
+title: "Estimation of S-R relationship parameters for the Haddock and Cod "
+output: html_document
+# output: 
+#   slidy_presentation: 
+# template: quarterly_report.html # output: ioslides_presentation
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message = F, warning = F)
+library(kableExtra)
+```
+
+
+
+```{r stock_data, echo = F}
+# Download stock parameters data from ices database
+
+library(icesSAG)  
+
+# WHG_data <- getSAG(stock = "whg.27.7b-ce-k", year = 2017, data = "summary")
+# COD_data <- getSAG(stock = "cod.27.7e-k", year = 2017, data = "summary")
+# HAD_data <- getSAG(stock = "had.27.7b-k", year = 2017, data = "summary")
+
+load("species_data.RData")
+# WHG_data <- sp_data[[1]]
+COD_data <- sp_data[[2]]
+HAD_data <- sp_data[[3]]
+```
+
+## COD
+
+```{r COD1, echo = F}
+ssb <- COD_data$SSB
+rec <- COD_data$recruitment
+# plot(ssb, rec)
+```
+
+About 50% of individuals are mature at 2 years and virtually 100% are mature by 3 years of age.
+
+### lag = 1
+```{r COD2, echo = F}
+lag <- 1 # lag should be > 0
+rec_lag1 <- rec[-c((length(rec)-lag + 1):length(rec)) ]
+ssb_lag1 <- ssb[-c(1:lag)]
+
+plot(ssb, rec)
+points(ssb_lag1, rec_lag1, pch = 20, col = "blue")
+legend ("topright", legend = c("lag = 0", "lag = 1"), col=c("black", "blue"), pch=c(1, 20), cex=0.8)
+```
+
+### Cod Likelihood function
+Likelihood function to fit a Beverton and Holt model.
+```{r Likelihood_COD}
+LL <- function(par){
+  a <- exp(par[1])
+  b <- exp(par[2])
+  c <- exp(par[3])
+  
+  R <- a*ssb_lag1 / (b+ssb_lag1)
+  
+  ll = dlnorm(rec_lag1, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  ll <- ll + dnorm(log(b), log(1e4), 0.2) # adding a prior on b parameter to imporve the estimation
+  -sum(ll)
+}
+
+LL_opt <- optim(par = log(c(15e3, 1e4, 2)),  fn = LL)
+LL_opt
+```
+
+
+```{r plot_LL_COD, echo=F} 
+a <- exp(LL_opt$par[1])
+b <- exp(LL_opt$par[2])
+data <- data.frame(paramter_a = a, paramter_b = b)
+sr1 <- function(x){a*x / (b+x)}
+s <- seq(0, 10e5, by = 1000)
+plot(ssb_lag1, rec_lag1, bty = "l",  xlim = c(0, 3e4), ylim = c(0, 2e4),
+     xlab = "ssb", ylab = "rec")
+lines(s, sr1(s))
+# text(ssb, rec, labels=WHG_data$Year, cex = 0.7, pos = 2)
+
+kable(x = data, format = "pandoc", digits = 2, align = "c",
+      col.names = c("paramter a", "paramter b"), caption = "The estimated Parameters of the Beverton and Holt model for cod")
+
+```
+
+*** 
+
+## Haddok
+
+```{r HAD1, echo = F}
+ssb <- HAD_data$SSB
+rec <- HAD_data$recruitment
+ plot(ssb, rec)
+```
+
+### Haddock Likelihood function
+Likelihood function to fit a Beverton and Holt model.
+```{r Likelihood_HAD}
+LL <- function(par){
+  a <- exp(par[1])
+  b <- exp(par[2])
+  c <- exp(par[3])
+  
+  R <- a*ssb / (b+ssb)
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  ll <- ll + dnorm(log(b), log(1e4), 0.2) # adding a prior on b parameter to imporve the estimation
+  -sum(ll)
+}
+
+LL_opt <- nlminb(start = log(c(1e6, 4e4, 2)),  objective = LL)
+LL_opt
+```
+
+
+```{r plot_LL_HAD, echo=F} 
+a <- exp(LL_opt$par[1])
+b <- exp(LL_opt$par[2])
+data <- data.frame(paramter_a = a, paramter_b = b)
+
+sr1 <- function(x){a*x / (b+x)}
+s <- seq(0, 10e5, by = 1000)
+plot(ssb, rec, bty = "l",  xlim = c(0, 10e4), ylim = c(0, 2e6))
+lines(s, sr1(s))
+# text(ssb, rec, labels=WHG_data$Year, cex = 0.7, pos = 2)
+
+kable(x = data, format = "pandoc", digits = 2, align = "c",
+      col.names = c("paramter a", "paramter b"), 
+      caption = "The estimated Parameters of the Beverton and Holt model for haddock")
+
+```

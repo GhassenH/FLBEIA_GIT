@@ -1,0 +1,592 @@
+---
+title: "Estimation of constant stock-recruitment parameters for mixed fisheries Management Strategy Evaluation"
+author: Ghassen Halouani & C$\'o$il$\'i$n Minto
+output: 
+  beamer_presentation:
+    theme: "Singapore"
+    
+---
+
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+library(kableExtra)
+```
+
+# FishKOSM Project
+## FishKOSM Project
+### Mixed fisheries, MSY ranges and Management Strategy Evaluation
+
+Investigate the performance of MSY reference values and ranges to provide practical and operational advice on the management of mixed demersal fisheries.
+
+
+## FishKOSM Project
+### FLBEIA toolbox which facilitates the development of bio-economic impact assessments of fisheries management strategies.
+
+The simulation is divided in two worlds: 
+
+- the operating model (OM, the real world) 
+- the management procedure model (MPM, the perceived world)
+
+# Estimation of S-R parameters
+## Study area
+
+Divisions 7.e-k (Eastern English Channel and Southern Celtic Seas)  
+
+```{r map1, include=FALSE, eval=F}
+library(rgdal)
+library(ggplot2)
+
+path.ices.area.poly <- c("/home/ghassen/Work/Post-doc GMIT/FishKOSM-GMIT/ghassen/FLBEIA/Haddock_Whiting_2fleets/GIS Celtic Sea/ICES_area_Haddock_Whiting/ICES_area_Haddock_Whiting_FLBEIA_all.shp")
+path.land.poly <- c("/home/ghassen/Work/GIS Database/Natural Earth/Land Polygon/ne_10m_land/ne_10m_land.shp")
+path.borders.line <- ("")
+
+ices.area.poly <-readOGR(dsn = path.ices.area.poly)
+land.poly <- readOGR(dsn = path.land.poly)
+
+ices.area.poly.f <- fortify(ices.area.poly, id = "Division")
+land.poly.f <- fortify(land.poly)
+```
+
+```{r map2, fig.width=6, fig.height=4}
+# adding labels on the map
+idList <- ices.area.poly@data$Division
+centroids.df <- as.data.frame(coordinates(ices.area.poly))
+names(centroids.df) <- c("Long", "Lat")  #more sensible column names
+id <- data.frame(centroids.df, idList, group = 1)
+
+#plotting the map
+MapCelticSea <- ggplot(ices.area.poly.f, aes(long, lat, group = group)) +
+  geom_polygon(color = "white", fill = "lightblue", alpha = 0.5) +
+  geom_polygon(data = land.poly.f, color = "grey60", fill = "grey60") +
+  coord_cartesian(xlim = c(-18, -1), ylim = c(48, 55)) +
+  geom_text(data = id, aes(label = idList, x = Long, y = Lat, group = group)) + 
+  xlab("Longitude") +
+  ylab("Latitude") 
+MapCelticSea
+```
+
+## Data
+
+```{r data}
+## ssb and rec data
+load("species_data.RData")
+WHG_data <- sp_data[[1]]
+
+ssb <- WHG_data$SSB
+rec <- WHG_data$recruitment
+```
+
+```{r raw_data, fig.width=6, fig.height=4}
+plot(ssb, rec, bty = "l", xlim = c(0, 1e5), ylim = c(0, 3e6),
+     xlab = "ssb", ylab = "rec", main = "WHG", cex.lab = 1)
+```
+
+\footnotetext{Data from the ICES Stock Assessment Graphs database <http://sg.ices.dk> for the period (1999 - 2017)}
+
+## Standard estimation of the S-R parameters
+
+**The Beverton and Holt stock recruitment relationship**
+
+$$R=\frac{\alpha B}{\beta + B} $$
+Where
+
+- $R$ : the recruitment
+- $B$ : the spawing stock biomass
+- $\alpha$ : the maximum rectruitment
+- $\beta$ : the spawing stock biomass needed to produce $\alpha/2$
+
+## Standard estimation of the S-R parameters
+
+Direct estimation of $\alpha$ and $\beta$ using a likelihood function
+
+```{r WHG_standard_estimation, echo=F, fig.width=6, fig.height=4}
+load("species_data.RData")
+WHG_data <- sp_data[[1]]
+
+ssb <- WHG_data$SSB
+rec <- WHG_data$recruitment
+
+LL <- function(par){
+  a <- exp(par[1])
+  b <- exp(par[2])
+  c <- exp(par[3])
+  
+  R <- a*ssb / (b+ssb)
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  # ll <- ll + dnorm(log(b), log(1e4), 0.2) # adding a prior on b parameter to imporve the estimation
+  -sum(ll)
+}
+
+LL_opt_WHG <- optim(par = log(c(15e3, 1e4, 2)),  fn = LL)
+# LL_opt_WHG
+
+a.WHG.sd <- exp(LL_opt_WHG$par[1])
+b.WHG.sd  <- exp(LL_opt_WHG$par[2])
+data <- data.frame(paramter_a = a.WHG.sd , paramter_b = b.WHG.sd )
+sr.WHG.sd  <- function(x){a.WHG.sd *x / (b.WHG.sd +x)}
+s <- seq(0, 10e5, by = 1000)
+plot(ssb, rec, bty = "l",  xlim = c(0, 1e5), ylim = c(0, 3e6),
+     xlab = "ssb", ylab = "rec", cex.lab = 1)
+lines(s, sr.WHG.sd (s))
+```
+
+
+## Estimation of the S-R parameters using **the steepness h**
+
+**The Beverton and Holt stock recruitment relationship**
+
+$$R=\frac{B}{\alpha + \beta B} $$
+Where
+
+- $R$ : the recruitement
+- $B$ : the spawing stock biomass
+- $\alpha$ : the inverse of the initial slope of the curve
+- $\beta$ : the inverse of asymptotic recruitment 
+
+## Estimation of the S-R parameters using **the steepness h**
+### $\alpha$ and $\beta$ parameters
+
+$$\alpha = \frac{S_0}{R_0} \frac{1-h}{4h} $$ 
+$$\beta = \frac{5h-1}{4hR_0} $$ 
+
+Where
+
+- $R_0$ : the recruitment when $F=0$
+- $h$ : the steepness parameter defined as the proportion of unfished recruitment $R_0$ produced by 20% of unfished population (spawning biomass $S_0$)
+- $S_0$ : the spawing stock biomass when at $F=0$
+
+\footnotetext{from Mangel et al. 2009}
+
+## Estimation of the S-R parameters using **the steepness h**
+### The Beverton-Holt spawner-recruit function expressed with steepness parameter 
+
+$$ R = \frac{0.8R_0hS}{0.2S_0(1-h)+(h-0.2)S}$$ 
+
+Where
+
+- $R$ : the recruitement
+- $R_0$ : the unfished recruitment
+- $h$ : the steepness parameter defined as the proportion of unfished recruitment $R_0$ produced by 20% of unfished population (spawning biomass $S_0$)
+- $S$ : the spawing stock biomass
+
+\footnotetext{from Mace and Doonan 1988}
+
+## Estimation of the S-R parameters using **the steepness h**
+### Etimation of $N$ by age when $F=0$
+
+$$N_{a+1} = N_ae^{-M_a} $$
+
+- $N$ : Abundance of Whiting
+- $M_a$ : Natural mortality
+- $a$ : age
+
+\footnotetext{data from ICES WGCSE REPORT 2017}
+
+## Estimation of the S-R parameters using **the steepness h**
+### Etimation of $S$ by age when $F=0$ 
+
+$$ S_0 = \sum_{a=0}^{T}N_aW_aMat_a $$ 
+
+Where
+
+- $S_0$ : the unfished spawing biomass
+- $N_a$ : the number at age
+- $W_a$ : the weight at age
+- $Mat_a$ : the maturity at age
+
+\footnotetext{data from ICES WGCSE REPORT 2017}
+
+## Estimation of the S-R parameters using **the steepness h**
+### Using a fixed value for the steepness parameter 
+
+- Estimation of $\alpha$ and $\beta$ using a likelihood function
+- $h=0.81$ 
+
+\footnotetext{from Myers et al. 1999}  
+
+## Estimation of the S-R parameters using **the steepness h**
+### Using a fixed value for the steepness parameter 
+
+```{r WHG_steepness_fixed, echo=F, fig.width=6, fig.height=4}
+
+## Weight at age
+W_age <- read.csv("SR data Whiting from report WGCSE/weight_age.csv", row.names = 1)
+colnames(W_age) <- c("0", seq(1:7))
+w_age_2016 <- t(W_age[18,])
+colnames(w_age_2016) <- "Weight"
+
+## Mat at age
+M_Mat_age <- read.csv("SR data Whiting from report WGCSE/M_Mat_age.csv")
+M_Mat <- M_Mat_age[,-2]
+
+## weight and Mat at age
+Mat_W_data <- data.frame(Mat = M_Mat$Mat, Weight = w_age_2016)
+
+# ============================== Likelihood function : Estimation of R0  ============================== 
+
+## loading data
+load("species_data.RData")
+WHG_data <- sp_data[[1]]
+
+ssb <- WHG_data$SSB
+rec <- WHG_data$recruitment
+h <- 0.81 # value from Meyers et al. 1999
+
+## likelihood function
+LL <- function(par) {
+  
+  R0 <- exp(par[1])
+  c <- exp(par[2])
+  
+  M <- M_Mat_age$M # vector of natural mortality by age 
+  N <- rep(NA, 7)
+  N[1] <- R0
+  for (i in 1:7) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  Mat_W_data$N <-N
+  S <- apply(Mat_W_data, 1, function(x) x[1]*x[2]*x[3])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  
+  -sum(ll)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2)),  objective = LL)
+# LL_opt
+
+R0_est <- exp(LL_opt$par[1])
+
+## S-R parameters
+
+# Calculation of SO from R0 
+## N
+M <- M_Mat_age$M # vector of natural mortality by age 
+N <- rep(NA, 7)
+N[1] <- R0_est
+for (i in 1:7) { N[i+1] <- N[i]*exp(-M[i]) }
+
+## S0   
+Mat_W_data$N <-N
+S <- apply(Mat_W_data, 1, function(x) x[1]*x[2]*x[3])
+S0_est <- sum(S)
+
+a <- (S0_est/R0_est) * (1-h)/(4*h)
+b <- (5*h-1) / (4*h*R0_est)
+
+sr1 <- function(x){ x / (a + b*x) }
+
+s <- seq(0, 10e5, by = 1000)
+plot(ssb, rec, bty = "l",  xlim = c(0, 1e5), ylim = c(0, 3e6),
+     xlab = "ssb", ylab = "rec")
+lines(s, sr1(s))
+
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+
+\small
+Estimated from (*Myers et al. 1999*)
+```{r prior_h, fig.width=6, fig.height=4}
+zmed <- 0.81
+z20 <- 0.64
+z80 <- 0.91
+
+## sum of square of the difference at z20 and z80
+ssq <- function(alpha){
+  beta <- (alpha - 1/3) / zmed - alpha + 2/3
+  z20.pred <- qbeta(p = 0.2, shape1 = alpha, shape2 = beta)
+  z80.pred <- qbeta(p = 0.8, shape1 = alpha, shape2 = beta)
+  return((z20.pred-z20)^2 + (z80.pred-z80)^2)
+}
+
+fit <- optim(par = 2, fn = ssq, method = "Brent", lower = 1, upper = 50)
+
+alpha.hat <- fit$par
+beta.hat <- (alpha.hat - 1/3) / zmed - alpha.hat + 2/3
+
+curve(dbeta(x, shape1 = alpha.hat, shape2 = beta.hat), from = 0, to = 1, n = 1e3, xlab="h", ylab="Probability Density Function", bty="l", col="white")
+abline(v = qbeta(c(0.2, 0.5, 0.8), shape1 = alpha.hat, shape2 = beta.hat), col="white", lty = 2)
+abline(v = c(z20, zmed, z80))
+text(x= c(0.6, 0.77, 0.96), y = c(0, 0, 0), labels = c("h20", "h50", "h90"))
+```
+
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+
+\small
+Estimated from (*Myers et al. 1999*)
+```{r prior_hh, fig.width=6, fig.height=4}
+zmed <- 0.81
+z20 <- 0.64
+z80 <- 0.91
+
+## sum of square of the difference at z20 and z80
+ssq <- function(alpha){
+  beta <- (alpha - 1/3) / zmed - alpha + 2/3
+  z20.pred <- qbeta(p = 0.2, shape1 = alpha, shape2 = beta)
+  z80.pred <- qbeta(p = 0.8, shape1 = alpha, shape2 = beta)
+  return((z20.pred-z20)^2 + (z80.pred-z80)^2)
+}
+
+fit <- optim(par = 2, fn = ssq, method = "Brent", lower = 1, upper = 50)
+
+alpha.hat <- fit$par
+beta.hat <- (alpha.hat - 1/3) / zmed - alpha.hat + 2/3
+
+curve(dbeta(x, shape1 = alpha.hat, shape2 = beta.hat), from = 0, to = 1, n = 1e3, xlab="h", ylab="Probability Density Function", bty="l", col="blue")
+abline(v = qbeta(c(0.2, 0.5, 0.8), shape1 = alpha.hat, shape2 = beta.hat), col="blue", lty = 2)
+abline(v = c(z20, zmed, z80))
+text(x= c(0.6, 0.77, 0.96), y = c(0, 0, 0), labels = c("h20", "h50", "h90"))
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+
+```{r steepness.WHG.prior, echo=F, fig.width=7, fig.height=5}
+
+#####################################################################################################
+# estimation of the stock recruitement parameters of Whiting using a prior on the steepness h (z)
+#####################################################################################################
+
+
+# ============================== input data for WHG (stock assessement 2016) 
+
+## Age
+age <- seq(from = 0,  to = 7)
+
+## M by age
+M <- c(1.22, 0.86, 0.65, 0.5, 0.43, 0.4, 0.38, 0.36)
+
+## Mat by age
+Mat <- c(0, 0, 1, 1, 1, 1, 1, 1)
+
+## Weight by age
+W2014 <- c(0.038, 0.142, 0.254, 0.397, 0.554, 0.662, 0.759, 1.007) # Weight by age2014
+W2015 <- c(0.018, 0.102, 0.220, 0.375, 0.573, 0.778, 0.671, 0.929) # Weight by age2015
+W2016 <- c(0.052, 0.149, 0.217, 0.358, 0.577, 0.685, 0.746, 0.784) # Weight by age2016
+W.data <- data.frame(W2014, W2015, W2016)
+W <- apply(W.data, 1, mean) # mean weight 2014, 2015, 2016 
+
+
+data <- data.frame(M = M, Mat = Mat, W = W)
+row.names(data) <- age
+
+## ssb and rec data
+load("species_data.RData")
+WHG_data <- sp_data[[1]]
+
+ssb <- WHG_data$SSB
+rec <- WHG_data$recruitment
+
+# ============================== adding a prior for the steepness parameter (from Meyers et al. 1999)
+
+zmed <- 0.81
+z20 <- 0.64
+z80 <- 0.91
+
+## sum of square of the difference at z20 and z80
+ssq <- function(alpha){
+  beta <- (alpha - 1/3) / zmed - alpha + 2/3
+  z20.pred <- qbeta(p = 0.2, shape1 = alpha, shape2 = beta)
+  z80.pred <- qbeta(p = 0.8, shape1 = alpha, shape2 = beta)
+  return((z20.pred-z20)^2 + (z80.pred-z80)^2)
+}
+
+fit <- optim(par = 2, fn = ssq, method = "Brent", lower = 1, upper = 50)
+
+alpha.hat <- fit$par
+beta.hat <- (alpha.hat - 1/3) / zmed - alpha.hat + 2/3
+
+# ============================== Likelihood function : Estimation of R0 using a prior en h
+
+## likelihood function
+LL <- function(par) {
+  
+  # parameters to estimate
+  R0 <- exp(par[1])
+  sdev <- exp(par[2])
+  h <- exp(par[3])
+  
+  # abundance by age class 
+  N <- rep(NA, 8)
+  N[1] <- R0
+  for (i in 1:7) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  # S0 
+  data$N <- N
+  S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(sdev^2)/2, sdlog = sdev, log = T)
+  llp <- ll + dbeta(h, shape1 = alpha.hat, shape2 = beta.hat) # adding the prior
+  
+  -sum(llp)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2, 0.8)),  objective = LL)
+
+R0.hat <- exp(LL_opt$par[1])
+h <- exp(LL_opt$par[3])
+
+## Calculation of S0 from R0 
+## N
+N <- rep(NA, 8)
+N[1] <- R0.hat
+for (i in 1:7) { N[i+1] <- N[i]*exp(-M[i]) }
+
+## S0   
+data$N <- N
+S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+S0.hat <- sum(S)
+
+a.whg.prior.h <- (S0.hat/R0.hat) * (1-h)/(4*h)
+b.whg.prior.h  <- (5*h-1) / (4*h*R0.hat)
+
+sr.whg.prior.h  <- function(x){ x / (a.whg.prior.h  + b.whg.prior.h *x) }
+
+s <- seq(0, 10e5, by = 100)
+plot(ssb, rec, bty = "l",  xlim = c(0, 1e5), ylim = c(0, 3e6),
+     xlab = "ssb", ylab = "rec", main = "WHG SRR using a prior on the steepness parameter h")
+lines(s, sr.whg.prior.h(s))
+```
+
+## Estimation of the S-R parameters
+
+```{r all_srr, fig.width=7, fig.height=5}
+s <- seq(0, 10e5, by = 1000)
+plot(ssb, rec, bty = "l",  xlim = c(0, 1e5), ylim = c(0, 3e6),
+     xlab = "ssb", ylab = "rec", cex.lab = 1)
+lines(s, sr.WHG.sd (s), lty = 1, lwd = 2)
+lines(s, sr.whg.prior.h(s), lty = 2, lwd = 2)
+lines(s, sr1(s), lty = 3, lwd = 2)
+legend("topright", legend = c("Standard estimation", "Prior on the steepness h", "Fixed steepness h"), lty=1:3, lwd = 2)
+```
+
+# R Code
+## Standard estimation of the S-R parameters
+### Direct estimation of $\alpha$ and $\beta$ using a likelihood function
+
+\footnotesize
+```{r LL1, eval=FALSE, echo=TRUE}
+
+LL <- function(par){
+  a <- exp(par[1])
+  b <- exp(par[2])
+  c <- exp(par[3])
+  
+  R <- a*ssb / (b+ssb)
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  -sum(ll)
+}
+
+LL_opt_WHG <- optim(par = log(c(15e3, 1e4, 2)),  fn = LL)
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Using a fixed value for the steepness parameter 
+
+\tiny
+```{r LL2, eval=FALSE, echo=TRUE}
+## likelihood function
+LL <- function(par) {
+  
+  R0 <- exp(par[1])
+  c <- exp(par[2])
+  
+  M <- M # vector of natural mortality by age 
+  N <- rep(NA, 7)
+  N[1] <- R0
+  for (i in 1:6) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  data$N <-N
+  S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  -sum(ll)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2)),  objective = LL)
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+Estimation of the distribution of the prior
+\tiny
+```{r prior_h2, eval=F, echo=T}
+#  adding a prior for the steepness parameter
+zmed <- 0.81
+z20 <- 0.64
+z80 <- 0.91
+
+## sum of square of the difference at z20 and z80
+ssq <- function(alpha){
+  beta <- (alpha - 1/3) / zmed - alpha + 2/3
+  z20.pred <- qbeta(p = 0.2, shape1 = alpha, shape2 = beta)
+  z80.pred <- qbeta(p = 0.8, shape1 = alpha, shape2 = beta)
+  return((z20.pred-z20)^2 + (z80.pred-z80)^2)
+}
+
+fit <- optim(par = 2, fn = ssq, method = "Brent", lower = 1, upper = 50)
+
+alpha.hat <- fit$par
+beta.hat <- (alpha.hat - 1/3) / zmed - alpha.hat + 2/3
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+
+\tiny
+```{r prior_h3, eval=F, echo=T}
+
+# Likelihood function : Estimation of R0 using a prior en h
+LL <- function(par) {
+  
+  # parameters to estimate
+  R0 <- exp(par[1])
+  sdev <- exp(par[2])
+  h <- exp(par[3])
+  
+  # abundance by age class 
+  N <- rep(NA, 8)
+  N[1] <- R0
+  for (i in 1:7) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  # S0 
+  data$N <- N
+  S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(sdev^2)/2, sdlog = sdev, log = T)
+  llp <- ll + dbeta(h, shape1 = alpha.hat, shape2 = beta.hat) # adding the prior
+  
+  -sum(llp)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2, 0.8)),  objective = LL)
+
+R0.hat <- exp(LL_opt$par[1])
+h <- exp(LL_opt$par[3])
+```

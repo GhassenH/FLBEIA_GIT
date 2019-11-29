@@ -1,0 +1,167 @@
+---
+title: "SR parameters estimation for Whiting (using the steepness parameter) "
+output: html_document
+editor_options:
+  chunk_output_type: console
+---
+
+<br>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = T, message = F, warning = F)
+library(kableExtra)
+```
+
+```{r input_data, echo=F}
+## Weight at age
+W_age <- read.csv("SR data Whiting from report WGCSE/weight_age.csv", row.names = 1)
+colnames(W_age) <- c("0", seq(1:7))
+w_age_2016 <- t(W_age[18,])
+colnames(w_age_2016) <- "Weight"
+
+## Mat at age
+M_Mat_age <- read.csv("SR data Whiting from report WGCSE/M_Mat_age.csv")
+M_Mat <- M_Mat_age[,-2]
+
+## weight and Mat at age
+Mat_W_data <- data.frame(Mat = M_Mat$Mat, Weight = w_age_2016)
+```
+
+### Input parameters
+```{r input_data2, echo=F}
+data <- data.frame(Age = M_Mat_age$Age, Mat = M_Mat_age$Mat, Weight = w_age_2016, M = M_Mat_age$M)
+library(kableExtra)
+kable(x = data, format = "pandoc", digits = 2, align = "c", row.names = F)
+```
+
+<br>
+
+### Etimation of $N$ by age when $F=0$
+
+$$N_{a+1} = N_ae^{-M_a} $$
+
+- $N$ : Abundance of Whiting
+- $M_a$ : Natural mortality
+- $a$ : age
+
+
+$$ S_0 = \sum_{a=0}^{T}N_aW_aMat_a $$ 
+
+Where
+
+- $S_0$ : the unfished spawing biomass
+- $N_a$ : the number at age
+- $W_a$ : the weight at age
+- $Mat_a$ : the maturity at age
+
+****  
+<br>
+
+### The Beverton-Holt spawner-recruit function expressed with steepness parameter 
+(from Mace and Doonan 1988)
+
+$$ R = \frac{0.8R_0hS}{0.2S_0(1-h)+(h-0.2)S}$$ 
+
+Where
+
+- $R$ : the recrutement
+- $R_0$ : the unfished recruitment
+- $h$ : the steepness parameter defined as the proportion of unfished recruitment $R_0$ produced by 20% of unfished population fecundity or spawning biomass $S_0$
+- $S$ : the spawing stock biomass
+
+****  
+<br>
+
+### The Likelihood function
+
+```{r LL}
+
+## loading data
+load("species_data.RData")
+WHG_data <- sp_data[[1]]
+
+ssb <- WHG_data$SSB
+rec <- WHG_data$recruitment
+h <- 0.81 # value from Meyers et al. 1999
+
+LL <- function(par) {
+  
+  R0 <- exp(par[1])
+  c <- exp(par[2])
+ 
+  ## Calculation of N, by age class 
+  M <- M_Mat_age$M # vector of natural mortality by age 
+  N <- rep(NA, 7)
+  N[1] <- R0
+  for (i in 1:7) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  ## Calculation of S0
+  Mat_W_data$N <-N
+  S <- apply(Mat_W_data, 1, function(x) x[1]*x[2]*x[3])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  
+  -sum(ll)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2)),  objective = LL)
+LL_opt
+```
+
+### SR parameters
+**The Beverton and Holt stock recruitment relationship**
+
+$$R=\frac{B}{\alpha + \beta B} $$
+Where
+
+- $R$ : the recruitement
+- $B$ : the spawing stock biomass
+- $\alpha$ : the inverse of the initial slope of the curve
+- $\beta$ : the inverse of asymptotic recruitment 
+
+$$\alpha = \frac{S_0}{R_0} \frac{1-h}{4h} $$ 
+$$\beta = \frac{5h-1}{4hR_0} $$ 
+
+Where
+
+- $R_0$ : the recruitment when $F=0$
+- $h$ : the steepness parameter defined as the proportion of unfished recruitment $R_0$ produced by 20% of unfished population fecundity or spawning biomass $S_0$
+- $S_0$ : the spawing stock biomass when at $F=0$
+
+(Equations from Mangel et al. 2009)
+
+```{r SR, echo=F }
+R0_est <- exp(LL_opt$par[1])
+
+# Calculation of SO from R0 
+## N
+M <- M_Mat_age$M # vector of natural mortality by age 
+N <- rep(NA, 7)
+N[1] <- R0_est
+for (i in 1:7) { N[i+1] <- N[i]*exp(-M[i]) }
+
+## S0   
+Mat_W_data$N <-N
+S <- apply(Mat_W_data, 1, function(x) x[1]*x[2]*x[3])
+S0_est <- sum(S)
+
+## S-R parameters
+a <- (S0_est/R0_est) * (1-h)/(4*h)
+b <- (5*h-1) / (4*h*R0_est)
+```
+
+```{r plot, echo=F}
+sr1 <- function(x){ x / (a + b*x) }
+
+s <- seq(0, 10e5, by = 1000)
+plot(ssb, rec, bty = "l",  xlim = c(0, 1e5), ylim = c(0, 3e6),
+     xlab = "ssb", ylab = "rec")
+lines(s, sr1(s))
+```
+
+

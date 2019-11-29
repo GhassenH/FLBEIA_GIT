@@ -1,0 +1,561 @@
+---
+title: "Estimation of the stock-recruitement parameters"
+author: "Ghassen Halouani & Coilin Minto"
+output:
+  beamer_presentation: default
+  ioslides_presentation: default
+  slidy_presentation: default
+---
+
+
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+library(kableExtra)
+```
+
+## Study area
+
+Divisions 7.e-k (Eastern English Channel and Southern Celtic Seas)  
+
+```{r map1, include=FALSE}
+library(rgdal)
+library(ggplot2)
+
+path.ices.area.poly <- c("/home/ghassen/Work/Post-doc GMIT/FishKOSM-GMIT/ghassen/FLBEIA/Haddock_Whiting_2fleets/GIS Celtic Sea/ICES_area_Haddock_Whiting/ICES_area_Haddock_Whiting_FLBEIA_all.shp")
+path.land.poly <- c("/home/ghassen/Work/GIS Database/Natural Earth/Land Polygon/ne_10m_land/ne_10m_land.shp")
+path.borders.line <- ("")
+
+
+ices.area.poly <-readOGR(dsn = path.ices.area.poly)
+land.poly <- readOGR(dsn = path.land.poly)
+
+ices.area.poly.f <- fortify(ices.area.poly, id = "Division")
+land.poly.f <- fortify(land.poly)
+```
+
+```{r map2, fig.width=6, fig.height=4}
+# adding labels on the map
+idList <- ices.area.poly@data$Division
+centroids.df <- as.data.frame(coordinates(ices.area.poly))
+names(centroids.df) <- c("Long", "Lat")  #more sensible column names
+id <- data.frame(centroids.df, idList, group = 1)
+
+#plotting the map
+MapCelticSea <- ggplot(ices.area.poly.f, aes(long, lat, group = group)) +
+  geom_polygon(color = "white", fill = "lightblue", alpha = 0.5) +
+  geom_polygon(data = land.poly.f, color = "grey60", fill = "grey60") +
+  coord_cartesian(xlim = c(-18, -1), ylim = c(48, 55)) +
+  geom_text(data = id, aes(label = idList, x = Long, y = Lat, group = group)) + 
+  xlab("Longitude") +
+  ylab("Latitude") 
+MapCelticSea
+```
+
+## Data
+
+```{r data}
+## ssb and rec data
+load("species_data.RData")
+COD_data <- sp_data[[2]]
+
+lag <- 1
+ssb <- COD_data$SSB
+rec <- COD_data$recruitment
+
+ssb <- ssb[-c((length(ssb)-lag + 1):length(ssb)) ]
+rec <- rec[-c(1:lag)]
+```
+
+```{r raw_data, fig.width=6, fig.height=4}
+plot(ssb, rec, bty = "l",  xlim = c(0, 3e4), ylim = c(0, 3e4),
+     xlab = "ssb", ylab = "rec", main = "COD", cex.lab = 1)
+```
+  \tiny
+  Data from the ICES Stock Assessment Graphs database <http://sg.ices.dk> for the period (1971 - 2017)
+
+## Standard estimation of the S-R parameters
+
+**The Beverton and Holt stock recruitment relationship**
+
+$$R=\frac{\alpha B}{\beta + B} $$
+Where
+
+- $R$ : the recruitement
+- $B$ : the spawing stock biomass
+- $\alpha$ : the maximum rectrutement
+- $\beta$ : the spawing stock biomass needed to produce $\alpha/2$
+
+## Standard estimation of the S-R parameters
+
+Direct estimation of $\alpha$ and $\beta$ using a likelihood function
+
+\footnotesize
+```{r LL1, eval=FALSE, echo=TRUE}
+
+LL <- function(par){
+  a <- exp(par[1])
+  b <- exp(par[2])
+  c <- exp(par[3])
+  
+  R <- a*ssb / (b+ssb)
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  -sum(ll)
+}
+
+LL_opt_cod <- optim(par = log(c(15e3, 1e4, 2)),  fn = LL)
+```
+
+
+## Standard estimation of the S-R parameters
+
+```{r COD_standard_estimation, echo=F, fig.width=6, fig.height=4}
+load("species_data.RData")
+COD_data <- sp_data[[2]]
+
+ssb <- COD_data$SSB
+rec <- COD_data$recruitment
+
+lag <- 1 # lag should be > 0
+
+ssb_lag1  <- ssb[-c((length(ssb)-lag + 1):length(ssb)) ]
+rec_lag1  <- rec[-c(1:lag)]
+
+LL <- function(par){
+  a <- exp(par[1])
+  b <- exp(par[2])
+  c <- exp(par[3])
+  
+  R <- a*ssb_lag1 / (b+ssb_lag1)
+  
+  ll = dlnorm(rec_lag1, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  # ll <- ll + dnorm(log(b), log(1e4), 0.2) # adding a prior on b parameter to imporve the estimation
+  -sum(ll)
+}
+
+LL_opt_cod <- optim(par = log(c(15e3, 1e4, 2)),  fn = LL)
+# LL_opt_cod
+
+a.cod.sd <- exp(LL_opt_cod$par[1])
+b.cod.sd  <- exp(LL_opt_cod$par[2])
+data <- data.frame(paramter_a = a.cod.sd , paramter_b = b.cod.sd )
+sr.cod.sd  <- function(x){a.cod.sd *x / (b.cod.sd +x)}
+s <- seq(0, 10e5, by = 1000)
+plot(ssb_lag1, rec_lag1, bty = "l",  xlim = c(0, 3e4), ylim = c(0, 3e4),
+     xlab = "ssb", ylab = "rec", cex.lab = 1)
+lines(s, sr.cod.sd (s))
+```
+
+
+## Estimation of the S-R parameters using **the steepness h**
+
+**The Beverton and Holt stock recruitment relationship**
+
+$$R=\frac{B}{\alpha + \beta B} $$
+Where
+
+- $R$ : the recruitement
+- $B$ : the spawing stock biomass
+- $\alpha$ : the inverse of the initial slope of the curve
+- $\beta$ : the inverse of asymptotic recruitment 
+
+## Estimation of the S-R parameters using **the steepness h**
+### $\alpha$ and $\beta$ parameters
+
+$$\alpha = \frac{S_0}{R_0} \frac{1-h}{4h} $$ 
+$$\beta = \frac{5h-1}{4hR_0} $$ 
+
+Where
+
+- $R_0$ : the recruitment when $F=0$
+- $h$ : the steepness parameter defined as the proportion of unfished recruitment $R_0$ produced by 20% of unfished population fecundity or spawning biomass $S_0$
+- $S_0$ : the spawing stock biomass when at $F=0$
+
+(*from Mangel et al. 2009*)
+
+## Estimation of the S-R parameters using **the steepness h**
+### The Beverton-Holt spawner-recruit function expressed with steepness parameter 
+
+$$ R = \frac{0.8R_0hS}{0.2S_0(1-h)+(h-0.2)S}$$ 
+
+Where
+
+- $R$ : the recrutement
+- $R_0$ : the unfished recruitment
+- $h$ : the steepness parameter defined as the proportion of unfished recruitment $R_0$ produced by 20% of unfished population fecundity or spawning biomass $S_0$
+- $S$ : the spawing stock biomass
+
+(*from Mace and Doonan 1988*)
+
+## Estimation of the S-R parameters using **the steepness h**
+### Etimation of $N$ by age when $F=0$
+
+$$N_{a+1} = N_ae^{-M_a} $$
+
+- $N$ : Abundance of Cod
+- $M_a$ : Natural mortality
+- $a$ : age
+
+\footnotetext{data from ICES WGCSE REPORT 2017}
+
+
+## Estimation of the S-R parameters using **the steepness h**
+### Etimation of $S$ by age when $F=0$ 
+
+$$ S_0 = \sum_{a=0}^{T}N_aW_aMat_a $$ 
+
+Where
+
+- $S_0$ : the unfished spawing biomass
+- $N_a$ : the number at age
+- $W_a$ : the weight at age
+- $Mat_a$ : the maturity at age
+
+\footnotetext{data from ICES WGCSE REPORT 2017}
+
+
+## Estimation of the S-R parameters using **the steepness h**
+### Using a fixed value for the steepness parameter 
+
+- Estimation of $\alpha$ and $\beta$ using a likelihood function
+- $h=0.87$ (*from Myers et al. 1999*)  
+
+## Estimation of the S-R parameters using **the steepness h**
+### Using a fixed value for the steepness parameter 
+
+\tiny
+```{r LL2, eval=FALSE, echo=TRUE}
+## likelihood function
+LL <- function(par) {
+  
+  R0 <- exp(par[1])
+  c <- exp(par[2])
+  
+  M <- M # vector of natural mortality by age 
+  N <- rep(NA, 7)
+  N[1] <- R0
+  for (i in 1:6) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  data$N <-N
+  S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  -sum(ll)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2)),  objective = LL)
+```
+
+
+## Estimation of the S-R parameters using **the steepness h**
+### Using a fixed value for the steepness parameter 
+
+```{r COD_steepness_fixed, echo=F, fig.width=6, fig.height=4}
+#####################################################################################################
+# estimation of the stock recruitement parameters of Cod using the steepness h (fixed)
+#####################################################################################################
+
+## Age
+age <- seq(from = 1,  to = 7)
+
+## M
+M <- c(0.512, 0.39496 ,0.47621, 0.42494, 0.45796, 0.33431, 0.33431)
+
+## Mat
+Mat <- c(0, 0.39, 0.87, 0.93, 1, 1, 1)
+
+## Weight
+
+W <- c(0.647, 1.310, 3.683, 6.700, 10.573, 11.453, 12.928)
+
+data <- data.frame(M = M, Mat = Mat, W = W)
+row.names(data) <- age
+
+
+# ============================== Likelihood function : Estimation of R0  ============================== 
+
+## loading data
+load("species_data.RData")
+COD_data <- sp_data[[2]]
+
+lag <- 1
+ssb <- COD_data$SSB
+rec <- COD_data$recruitment
+
+ssb <- ssb[-c((length(ssb)-lag + 1):length(ssb)) ]
+rec <- rec[-c(1:lag)]
+
+h <- 0.84 # value from Meyers et al. 1999
+
+## likelihood function
+LL <- function(par) {
+  
+  R0 <- exp(par[1])
+  c <- exp(par[2])
+  
+  M <- M # vector of natural mortality by age 
+  N <- rep(NA, 7)
+  N[1] <- R0
+  for (i in 1:6) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  data$N <-N
+  S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(c^2)/2, sdlog = c, log = T)
+  
+  -sum(ll)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2)),  objective = LL)
+# LL_opt
+
+R0_est <- exp(LL_opt$par[1])
+
+## S-R parameters
+
+# Calculation of SO from R0 
+## N
+N <- rep(NA, 7)
+N[1] <- R0_est
+for (i in 1:6) { N[i+1] <- N[i]*exp(-M[i]) }
+
+## S0   
+data$N <- N
+S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+S0_est <- sum(S)
+
+
+a.cod.fixed.h <- (S0_est/R0_est) * (1-h)/(4*h)
+b.cod.fixed.h <- (5*h-1) / (4*h*R0_est)
+
+sr.cod.fixed.h <- function(x){ x / (a.cod.fixed.h + b.cod.fixed.h*x) }
+
+s <- seq(0, 10e5, by = 100)
+plot(ssb, rec, bty = "l",  xlim = c(0, 3e4), ylim = c(0, 3e4),
+     xlab = "ssb", ylab = "rec", main = " ", cex.lab = 1)
+lines(s, sr.cod.fixed.h(s))
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+Estimated from (*Meyers et al. 1999*)
+
+```{r prior_h, fig.width=7, fig.height=5}
+zmed <- 0.84
+z20 <- 0.76
+z80 <- 0.9
+
+## sum of square of the difference at z20 and z80
+ssq <- function(alpha){
+  beta <- (alpha - 1/3) / zmed - alpha + 2/3
+  z20.pred <- qbeta(p = 0.2, shape1 = alpha, shape2 = beta)
+  z80.pred <- qbeta(p = 0.8, shape1 = alpha, shape2 = beta)
+  return((z20.pred-z20)^2 + (z80.pred-z80)^2)
+}
+
+fit <- optim(par = 2, fn = ssq, method = "Brent", lower = 1, upper = 50)
+
+alpha.hat <- fit$par
+beta.hat <- (alpha.hat - 1/3) / zmed - alpha.hat + 2/3
+
+curve(dbeta(x, shape1 = alpha.hat, shape2 = beta.hat), from = 0, to = 1, n = 1e3, ylab = "Density", xlab = "h")
+abline(v = qbeta(c(0.2, 0.5, 0.8), shape1 = alpha.hat, shape2 = beta.hat))
+abline(v = c(z20, zmed, z80), lty = 2, col="navyblue")
+text(x= c(0.72, 0.81, 0.94), y = c(5,5,5), labels = c("h20", "h50", "h90"))
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+
+\tiny
+```{r prior_h2, eval=F, echo=T}
+#  adding a prior for the steepness parameter
+zmed <- 0.84
+z20 <- 0.76
+z80 <- 0.9
+
+## sum of square of the difference at z20 and z80
+ssq <- function(alpha){
+  beta <- (alpha - 1/3) / zmed - alpha + 2/3
+  z20.pred <- qbeta(p = 0.2, shape1 = alpha, shape2 = beta)
+  z80.pred <- qbeta(p = 0.8, shape1 = alpha, shape2 = beta)
+  return((z20.pred-z20)^2 + (z80.pred-z80)^2)
+}
+
+fit <- optim(par = 2, fn = ssq, method = "Brent", lower = 1, upper = 50)
+
+alpha.hat <- fit$par
+beta.hat <- (alpha.hat - 1/3) / zmed - alpha.hat + 2/3
+```
+
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+
+\tiny
+```{r prior_h3, eval=F, echo=T}
+
+# Likelihood function : Estimation of R0 using a prior en h
+LL <- function(par) {
+  
+  # parameters to estimate
+  R0 <- exp(par[1])
+  sdev <- exp(par[2])
+  h <- exp(par[3])
+  
+  # abundance by age class 
+  N <- rep(NA, 7)
+  N[1] <- R0
+  for (i in 1:6) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  # S0 
+  data$N <- N
+  S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(sdev^2)/2, sdlog = sdev, log = T)
+  llp <- ll + dbeta(h, shape1 = alpha.hat, shape2 = beta.hat) # adding the prior
+  
+  -sum(llp)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2, 0.8)),  objective = LL)
+```
+
+## Estimation of the S-R parameters using **the steepness h**
+### Adding a prior on the steepness parameter
+
+
+```{r steepness.cod.prior, echo=F, fig.width=7, fig.height=5}
+#####################################################################################################
+# estimation of the stock recruitement parameters of Cod using a prior on the steepness h (z)
+#####################################################################################################
+
+# ============================== input data for COD (stock assessement 2016) 
+
+## Age
+age <- seq(from = 1,  to = 7)
+
+## M by age
+M <- c(0.512, 0.368, 0.304, 0.269, 0.247, 0.233, 0.233)
+
+## Mat by age
+Mat <- c(0, 0.39, 0.87, 0.93, 1, 1, 1)
+
+## Weight by age
+W2014 <- c(0.464, 1.654, 3.788, 6.530, 9.074, 10.584, 11.611) # Weight by age2014
+W2015 <- c(1.161, 1.309, 4.079, 8.517, 10.105, 10.661, 12.288) # Weight by age 2015
+W2016 <- c(0.647, 1.310, 3.683, 6.700, 10.573, 11.453, 12.928) #  Weight by age2016
+W.data <- data.frame(W2014, W2015, W2016)
+W <- apply(W.data, 1, mean) # mean weight 2014, 2015, 2016 
+
+
+data <- data.frame(M = M, Mat = Mat, W = W)
+row.names(data) <- age
+
+## ssb and rec data
+load("species_data.RData")
+COD_data <- sp_data[[2]]
+
+lag <- 1
+ssb <- COD_data$SSB
+rec <- COD_data$recruitment
+
+ssb <- ssb[-c((length(ssb)-lag + 1):length(ssb)) ]
+rec <- rec[-c(1:lag)]
+
+# ============================== adding a prior for the steepness parameter (from Meyers et al. 1999)
+
+zmed <- 0.84
+z20 <- 0.76
+z80 <- 0.9
+
+## sum of square of the difference at z20 and z80
+ssq <- function(alpha){
+  beta <- (alpha - 1/3) / zmed - alpha + 2/3
+  z20.pred <- qbeta(p = 0.2, shape1 = alpha, shape2 = beta)
+  z80.pred <- qbeta(p = 0.8, shape1 = alpha, shape2 = beta)
+  return((z20.pred-z20)^2 + (z80.pred-z80)^2)
+}
+
+fit <- optim(par = 2, fn = ssq, method = "Brent", lower = 1, upper = 50)
+
+alpha.hat <- fit$par
+beta.hat <- (alpha.hat - 1/3) / zmed - alpha.hat + 2/3
+
+# ============================== Likelihood function : Estimation of R0 using a prior en h
+
+## likelihood function
+LL <- function(par) {
+  
+  # parameters to estimate
+  R0 <- exp(par[1])
+  sdev <- exp(par[2])
+  h <- exp(par[3])
+  
+  # abundance by age class 
+  N <- rep(NA, 7)
+  N[1] <- R0
+  for (i in 1:6) { 
+    N[i+1] <- N[i]*exp(-M[i]) 
+  }
+  
+  # S0 
+  data$N <- N
+  S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+  S0 <- sum(S)
+  
+  R <- 0.8*R0*h*ssb / (0.2*S0*(1-h) + ssb*(h-0.2))
+  
+  ll = dlnorm(rec, meanlog = log(R)-(sdev^2)/2, sdlog = sdev, log = T)
+  llp <- ll + dbeta(h, shape1 = alpha.hat, shape2 = beta.hat) # adding the prior
+  
+  -sum(llp)
+}
+
+LL_opt <- nlminb(start = log(c(10000, 0.2, 0.8)),  objective = LL)
+# LL_opt
+
+R0.hat <- exp(LL_opt$par[1])
+h <- exp(LL_opt$par[3])
+
+## Calculation of S0 from R0 
+## N
+N <- rep(NA, 7)
+N[1] <- R0.hat
+for (i in 1:6) { N[i+1] <- N[i]*exp(-M[i]) }
+
+## S0   
+data$N <- N
+S <- apply(data, 1, function(x) x[2]*x[3]*x[4])
+S0.hat <- sum(S)
+
+a.cod.prior.h <- (S0.hat/R0.hat) * (1-h)/(4*h)
+b.cod.prior.h <- (5*h-1) / (4*h*R0.hat)
+
+sr.cod.prior.h <- function(x){ x / (a.cod.prior.h + b.cod.prior.h*x) }
+
+s <- seq(0, 10e5, by = 100)
+plot(ssb, rec, bty = "l",  xlim = c(0, 3e4), ylim = c(0, 3e4),
+     xlab = "ssb", ylab = "rec", main = "SRR using a prior on the steepness parameter h")
+lines(s, sr.cod.prior.h(s))
+```
+
+## Estimation of the S-R parameters
+
+![](COD SRR2.pdf)

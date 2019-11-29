@@ -1,0 +1,78 @@
+---
+title: "Quantifying interactions between two métiers"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br> 
+<br> 
+  
+
+*ind* is the proposed index to quantify the intensity of the interaction between two métiers (TR1 and TR2) in terms of catches, *ind* was claculated from FLBEIA simulations :
+
+\begin{equation}
+ind = \frac{|\frac{\Delta_{C_1}}{\Delta_{m_i}}|}{|\frac{\Delta_{C_1}}{\Delta_{m_i}}| + |\frac{\Delta_{C_2}}{\Delta_{m_j}}|}
+\end{equation}
+
+with  
+
+- $|\frac{\Delta_{C_1}}{\Delta_{m_i}}|$  : slope métier 1
+- $|\frac{\Delta_{C_2}}{\Delta_{m_j}}|$  : slope métier 2
+- $C_1, C_2$ : catches of métiers 1 and 2
+- $m_1, m_2$ :q multipliers for métiers 1 and 2
+  
+<br> 
+<br> 
+
+Cobb-Douglas production function :
+
+\begin{equation} 
+C = q E^\alpha B^\beta  
+\end{equation}
+
+Catches by métier in FLBEIA simulations :
+
+$$C_1 = q_1 m_i B_{ij}^\beta E_1 ^\alpha$$
+$$C_2 = q_2 m_j B_{ij}^\beta E_2 ^\alpha$$
+
+with 
+
+- $C_1, C_2$ : catches of métiers 1 and 2
+- $q_1, q_2$ : catchability of métiers 1 and 2
+- $m_i, m_j$ : q multipliers for métiers 1 and 2
+- $B_{ij}$ : biomass of the stock when $m_i$ and $m_j$ are applied
+- $E_1, E_2$ : fishing effort of métiers 1 and 2
+- $\alpha, \beta$ : parameters of Cobb-Douglas function
+
+
+<br> 
+<br>
+
+$$\frac{\Delta_{C_1}}{\Delta_{m_i}} = \frac{q_1 mi B_{ij}^\beta E_1 ^\alpha}{m_i} = q_1 B_{ij}^\beta E_1 ^\alpha$$ 
+
+$$\frac{\Delta_{C_2}}{\Delta_{m_j}} = \frac{q_2 mi B_{ij}^\beta E_2^\alpha}{m_j} = q_2 B_{ij}^\beta E_2^\alpha$$
+
+$$ind = \frac{q_1 B_{ij}^\beta E_1^\alpha}{q_1 B_{ij}^\beta E_1^\alpha + q_2 B_{ij}^\beta E_2^\alpha}$$
+
+<br> 
+
+$$ind = \frac{q_1 E_1^\alpha}{q_1 E_1^\alpha + q_2 E_2^\alpha}$$
+
+<br>
+<br>
+Interpretation of the index :
+<br>
+
+
+- $ind \rightarrow 1$ means low interactions : métier 1 is driving the catches
+- $ind \rightarrow 0$ means low interactions : métier 2 is driving the catches
+- $ind \rightarrow 0.5$ means high interactions between métiers 1 and 2
+
+
+
+
